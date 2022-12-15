@@ -26,6 +26,14 @@ namespace AlienRace
         // ReSharper disable once InconsistentNaming
         private static readonly Type patchType = typeof(HarmonyPatches);
 
+        [HarmonyTargetMethod]
+        public static MethodBase TargetMethod()
+        {
+            var targetMethod = typeof(PawnRenderer).GetNestedTypes(AccessTools.all).SelectMany(innerType => AccessTools.GetDeclaredMethods(innerType))
+                    .FirstOrDefault(method => method.Name.Contains("DrawGene") && method.ReturnType == typeof(void) && method.GetParameters().Length == 2);
+            return targetMethod;
+        }
+
         static HarmonyPatches()
         {
             Harmony harmony = new Harmony(id: "rimworld.erdelf.alien_race.main");
@@ -265,6 +273,10 @@ namespace AlienRace
             harmony.Patch(AccessTools.Method(typeof(HumanlikeMeshPoolUtility), nameof(HumanlikeMeshPoolUtility.GetHumanlikeBeardSetForPawn)), transpiler: new HarmonyMethod(patchType, nameof(GetHumanlikeHairSetForPawnTranspiler)));
             harmony.Patch(AccessTools.Method(typeof(PawnRenderer),             nameof(PawnRenderer.GetBodyOverlayMeshSet)),                   postfix: new HarmonyMethod(patchType, nameof(GetBodyOverlayMeshSetPostfix)));
             
+            harmony.Patch(AccessTools.Method(typeof(PawnRenderer), "DrawBodyGenes"), prefix: new HarmonyMethod(patchType, nameof(RemoveMethodPrefix)));
+            harmony.Patch(AccessTools.Method(typeof(PawnRenderer), "DrawPawnFur"), prefix: new HarmonyMethod(patchType, nameof(RemoveMethodPrefix)));
+            harmony.Patch(TargetMethod(), prefix: new HarmonyMethod(patchType, nameof(RemoveMethodPrefix)));
+
             harmony.Patch(AccessTools.Method(typeof(PawnGenerator), "GenerateSkills"), new HarmonyMethod(patchType, nameof(GenerateSkillsPrefix)), postfix: new HarmonyMethod(patchType, nameof(GenerateSkillsPostfix)));
 
             harmony.Patch(AccessTools.Method(typeof(PawnGenerator), "TryGenerateNewPawnInternal"), transpiler: new HarmonyMethod(patchType, nameof(TryGenerateNewPawnInternalTranspiler)));
@@ -3389,7 +3401,10 @@ namespace AlienRace
                 yield return instruction;
             }
         }
-
+        public static bool RemoveMethodPrefix()
+        {
+            return false;
+        }
         public static void DrawAddons(PawnRenderFlags renderFlags, Vector3 vector, Vector3 headOffset, Pawn pawn, Quaternion quat, Rot4 rotation)
         {
             if (pawn.def is not ThingDef_AlienRace alienProps) return;

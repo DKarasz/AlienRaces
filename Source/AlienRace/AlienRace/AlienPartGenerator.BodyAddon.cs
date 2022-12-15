@@ -31,7 +31,7 @@ namespace AlienRace
 
             public BodyPartDef bodyPart;
             public string      bodyPartLabel;
-            public bool drawWithoutPart = false;
+            public bool        drawWithoutPart = false;
 
             private const string REWIND_PATH = "void";
 
@@ -226,13 +226,16 @@ namespace AlienRace
                 {
                     channel.first = (Color)colorOverrideOne;
                 }
-                channel.first *= colorPostFactor;
 
                 if (colorOverrideTwo != null)
                 {
                     channel.second = (Color)colorOverrideTwo;
                 }
-                channel.second *= colorPostFactor;
+                if (colorPostFactor != 1f)
+                {
+                    channel.first *= colorPostFactor;
+                    channel.second *= colorPostFactor;
+                }
 
                 string returnPath = this.GetPath(pawn, ref sharedIndex, savedIndex);
 

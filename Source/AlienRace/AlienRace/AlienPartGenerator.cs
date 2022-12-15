@@ -81,6 +81,10 @@
             return first ? skinColors.first : skinColors.second;
         }
 
+        public void GenericOffsets()
+        {
+            this.GenerateOffsetDefaults();
+        }
         private void GenerateOffsetDefaults()
         {
             this.offsetDefaults.Add(new OffsetNamed
