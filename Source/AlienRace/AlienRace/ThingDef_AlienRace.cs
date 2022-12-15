@@ -133,13 +133,13 @@
                             }
                     }
 
-                    if (field.FieldType.Assembly == typeof(ThingDef_AlienRace).Assembly) 
+                    if (field.FieldType.Assembly == typeof(ThingDef_AlienRace).Assembly)
                         RecursiveAttributeCheck(field.FieldType, instanceNew);
 
                     LoadDefFromField attribute = field.GetCustomAttribute<LoadDefFromField>();
                     if (attribute != null)
                         if (instanceNew.GetValue() == null)
-                            instanceNew.SetValue(attribute.GetDef(field.FieldType));
+                            instanceNew.SetValue(attribute.defName == "this" ? this : attribute.GetDef(field.FieldType));
                 }
             }
             RecursiveAttributeCheck(typeof(AlienSettings), Traverse.Create(this.alienRace));
@@ -185,7 +185,20 @@
 
         public SimpleCurve lovinIntervalHoursFromAge;
         public List<int>   growthAges = new() { 7, 10, 13 };
-        public SimpleCurve maleFertilityAgeFactor = new(new []
+
+        public List<BackstoryCategoryFilter> childBackstoryFilter;
+        public List<BackstoryCategoryFilter> adultBackstoryFilter;
+        public List<BackstoryCategoryFilter> adultVatBackstoryFilter;
+        public List<BackstoryCategoryFilter> newbornBackstoryFilter;
+
+        public ReproductionSettings reproduction = new ReproductionSettings();
+    }
+
+    public class ReproductionSettings
+    {
+        public PawnKindDef childKindDef;
+
+        public SimpleCurve maleFertilityAgeFactor = new(new[]
                                                         {
                                                             new CurvePoint(14, 0),
                                                             new CurvePoint(18, 1),
@@ -203,9 +216,14 @@
                                                               new CurvePoint(50, 0),
                                                           });
 
-        public List<BackstoryCategoryFilter> childBackstoryFilter;
-        public List<BackstoryCategoryFilter> adultBackstoryFilter;
-        public List<BackstoryCategoryFilter> adultVatBackstoryFilter;
+        public List<HybridSpecificSettings> hybridSpecific = new();
+    }
+
+    public class HybridSpecificSettings
+    {
+        public ThingDef    partnerRace;
+        public float       probability = 100;
+        public PawnKindDef childKindDef;
     }
 
     public class FactionRelationSettings
@@ -520,13 +538,18 @@
 
         public static HashSet<TraitDef> traitRestricted = new HashSet<TraitDef>();
 
-        public static bool CanGetTrait(TraitDef trait, ThingDef race)
+        public static bool CanGetTrait(TraitDef trait, ThingDef race, int degree = 0)
         {
-            RaceRestrictionSettings raceRestriction = (race as ThingDef_AlienRace)?.alienRace.raceRestriction;
+            ThingDef_AlienRace.AlienSettings           alienProps   = (race as ThingDef_AlienRace)?.alienRace;
+            RaceRestrictionSettings raceRestriction = alienProps?.raceRestriction;
             bool                    result          = true;
 
             if (traitRestricted.Contains(trait) || (raceRestriction?.onlyGetRaceRestrictedTraits ?? false))
-                result = raceRestriction?.whiteTraitList.Contains(trait)                        ?? false;
+                result &= raceRestriction?.whiteTraitList.Contains(trait)                        ?? false;
+
+            if (!alienProps?.generalSettings.disallowedTraits.NullOrEmpty() ?? false)
+                result &= !alienProps.generalSettings.disallowedTraits.Where(traitEntry => traitEntry.defName == trait && (degree == traitEntry.degree || traitEntry.degree == 0)).
+                                      Any(traitEntry => Rand.Range(min: 0, max: 100) < traitEntry.chance);
 
             return result && !(raceRestriction?.blackTraitList.Contains(trait) ?? false);
         }
@@ -603,11 +626,11 @@
         public bool           canReproduce                     = true;
         public bool           canReproduceWithSelf             = true;
         public bool           onlyReproduceWithRestrictedRaces = false;
-        public List<ThingDef> reproductionList                 = new List<ThingDef>();
-        public List<ThingDef> whiteReproductionList            = new List<ThingDef>();
-        public List<ThingDef> blackReproductionList            = new List<ThingDef>();
+        public List<ThingDef> reproductionList                 = new();
+        public List<ThingDef> whiteReproductionList            = new();
+        public List<ThingDef> blackReproductionList            = new();
 
-        public static HashSet<ThingDef> reproductionRestricted = new HashSet<ThingDef>();
+        public static HashSet<ThingDef> reproductionRestricted = new();
 
         public static bool CanReproduce(Pawn pawn, Pawn partnerPawn) => 
             CanReproduce(pawn.def, partnerPawn.def);
