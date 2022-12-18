@@ -1,31 +1,14 @@
 ﻿namespace AlienRace
 {
     using System.Collections.Generic;
-    using System.Linq;
     using RimWorld;
     using Verse;
 
     [StaticConstructorOnStartup]
     public class RaceSettings : Def
     {
-        public PawnKindSettings pawnKindSettings;
-        public List<BackstoryTagItem> backstoryTagInsertion;
-
-        static RaceSettings()
-        {
-            foreach (BackstoryTagItem bt in DefDatabase<RaceSettings>.AllDefs.SelectMany(selector: rs => rs.backstoryTagInsertion))
-            {
-                foreach (string backstory in bt.backstories)
-                    if (BackstoryDatabase.TryGetWithIdentifier(backstory, out Backstory bs))
-                        bs.spawnCategories.AddRange(bt.spawnCategories);
-            }
-        }
-    }
-
-    public class BackstoryTagItem
-    {
-        public List<string> backstories     = new List<string>();
-        public List<string> spawnCategories = new List<string>();
+        public PawnKindSettings                   pawnKindSettings;
+        public List<AlienPartGenerator.BodyAddon> universalBodyAddons = new List<AlienPartGenerator.BodyAddon>();
     }
 
     public class PawnKindSettings

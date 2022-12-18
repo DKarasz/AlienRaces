@@ -10,8 +10,15 @@
 
         public override string SettingsCategory() => "Alien Race";
 
-        public AlienRaceMod(ModContentPack content) : base(content) => 
+        public AlienRaceMod(ModContentPack content) : base(content)
+        {
             settings = this.GetSettings<AlienRaceSettings>();
+
+            if (CachedData.customDataLoadMethodCacheInfo().ContainsKey(typeof(AlienPartGenerator.BodyAddon)))
+                CachedData.customDataLoadMethodCacheInfo()[typeof(AlienPartGenerator.BodyAddon)] = null;
+            else
+                CachedData.customDataLoadMethodCacheInfo().Add(typeof(AlienPartGenerator.BodyAddon), null);
+        }
 
         public override void DoSettingsWindowContents(Rect inRect)
         {
@@ -40,8 +47,8 @@
 
         public void UpdateSettings()
         {
-            ((ThingDef_AlienRace)ThingDefOf.Human).alienRace.generalSettings.alienPartGenerator.colorChannels.Find(match: ccg => ccg.name == "skin").first =
-            new ColorGenerator_SkinColorMelanin { maxMelanin = 1f, minMelanin = 0f, naturalMelanin = this.centralMelanin };
+            ((ThingDef_AlienRace)ThingDefOf.Human).alienRace.generalSettings.alienPartGenerator.colorChannels.Find(match: ccg => ccg.name == "skin").entries[0].first = 
+                new ColorGenerator_SkinColorMelanin { maxMelanin = 1f, minMelanin = 0f, naturalMelanin = this.centralMelanin };
         }
     }
 }
