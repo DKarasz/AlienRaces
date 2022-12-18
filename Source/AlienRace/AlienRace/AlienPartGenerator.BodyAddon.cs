@@ -240,7 +240,7 @@ namespace AlienRace
                 string returnPath = this.GetPath(pawn, ref sharedIndex, savedIndex);
 
                 return !returnPath.NullOrEmpty() ?
-                           GraphicDatabase.Get<Graphic_Multi_RotationFromData>(returnPath, ContentFinder<Texture2D>.Get(returnPath + "_northm", reportFailure: false) == null ?
+                           GraphicDatabase.Get<Graphic_Multi_RotationFromData>(returnPath, ContentFinder<Texture2D>.Get(returnPath + "_southm", reportFailure: false) == null ?
                                                                                                this.ShaderType.Shader : 
                                                                                                ShaderDatabase.CutoutComplex, this.drawSize * 1.5f, channel.first, channel.second, new GraphicData
                                                                                                                                                                                   {

@@ -88,7 +88,7 @@
                     }
                     if (!gene.graphicData.graphicPaths.NullOrEmpty())
                     {
-                        addon.paths.ConcatIfNotNull(gene.graphicData.graphicPaths);
+                        addon.paths.AddRange(gene.graphicData.graphicPaths);
                     }
                     if (gene.graphicData.graphicPathFemale != null)
                     {
@@ -105,6 +105,7 @@
                     addon.alignWithHead = gene.graphicData.drawLoc != GeneDrawLoc.Tailbone;
                     addon.layerInvert = false;
                     addon.ColorChannel = gene.graphicData.colorType == GeneColorType.Custom ? "base" : gene.graphicData.colorType.ToString().ToLower();//
+                    Log.Message(addon.ColorChannel);
                     if (gene.graphicData.skinIsHairColor && addon.ColorChannel.Equals("skin"))
                     {
                         addon.ColorChannel = "hair";
@@ -114,7 +115,7 @@
                         addon.colorOverrideOne = gene.graphicData.color;
                     }
                     addon.colorPostFactor = gene.graphicData.colorRGBPostFactor;
-                    addon.ShaderType = gene.graphicData.useSkinShader ? ShaderTypeDefOf.CutoutComplex : ShaderTypeDefOf.Transparent;//
+                    addon.ShaderType = gene.graphicData.useSkinShader ? ShaderTypeDefOf.Cutout : ShaderTypeDefOf.Transparent;//
                     if (!gene.graphicData.drawIfFaceCovered)
                     {
                         addon.hiddenUnderApparelFor.Add(BodyPartGroupDefOf.FullHead);
@@ -142,11 +143,13 @@
                             tempOffset = 0;
                             break;
                     }
+                    tempOffset -= 0.3f;
+                    addon.inFrontOfBody = true;
                     if (gene.graphicData.fur != null)
                     {
                         addon.bodytypeGraphics = new List<AlienPartGenerator.ExtendedBodytypeGraphic>();
                         addon.alignWithHead = false;
-                        tempOffset += 0.009187258f;
+                        tempOffset += 0.0099f;
                         foreach (FurCoveredGraphicData fur in gene.graphicData.fur.bodyTypeGraphicPaths)
                         {
                             AlienPartGenerator.ExtendedBodytypeGraphic furbody = new AlienPartGenerator.ExtendedBodytypeGraphic();
@@ -155,7 +158,7 @@
                             addon.bodytypeGraphics.Add(furbody);
                         }
                     }
-                    addon.defaultOffset = gene.graphicData.drawLoc == GeneDrawLoc.Tailbone ? "Tail" : "Center";
+                    //addon.defaultOffset = gene.graphicData.drawLoc == GeneDrawLoc.Tailbone ? "Tail" : "Center";
 
                     addon.offsets = new AlienPartGenerator.BodyAddonOffsets();
 
@@ -178,15 +181,22 @@
                     addon.offsets.west = new AlienPartGenerator.RotationOffset();
                     addon.offsets.west.layerOffset = gene.graphicData.DrawOffsetAt(Rot4.West).y + tempOffset;
 
-                    addon.offsets.north.offset = gene.graphicData.DrawOffsetAt(Rot4.North);
+                    Vector3 tempVector = gene.graphicData.DrawOffsetAt(Rot4.North);
+                    addon.offsets.north.offset = new Vector2(tempVector.x, tempVector.z);
 
-                    addon.offsets.east.offset = gene.graphicData.DrawOffsetAt(Rot4.East);
+                    tempVector = gene.graphicData.DrawOffsetAt(Rot4.East);
+                    addon.offsets.east.offset = new Vector2(tempVector.x, tempVector.z);
+                    addon.offsets.east.offset.x *= -1;
 
-                    addon.offsets.south.offset = gene.graphicData.DrawOffsetAt(Rot4.South);
+                    tempVector = gene.graphicData.DrawOffsetAt(Rot4.South);
+                    addon.offsets.south.offset = new Vector2(tempVector.x, tempVector.z);
 
-                    addon.offsets.west.offset = gene.graphicData.DrawOffsetAt(Rot4.West);
+                    tempVector = gene.graphicData.DrawOffsetAt(Rot4.West);
+                    addon.offsets.west.offset = new Vector2(tempVector.x, tempVector.z);
                     if (gene.graphicData.narrowCrownHorizontalOffset != 0)
                     {
+                        addon.offsets.east.headTypes = new List<AlienPartGenerator.HeadTypeOffsets>();
+                        addon.offsets.west.headTypes = new List<AlienPartGenerator.HeadTypeOffsets>();
                         foreach (HeadTypeDef head in (DefDatabase<HeadTypeDef>.AllDefsListForReading))
                         {
                             if (head.narrow)
@@ -199,24 +209,47 @@
                                 Vector3 geneLoc = addon.offsets.east.offset;
                                 geneLoc += Vector3.right * (0f - narrowCrownHorizontalOffset);
                                 geneLoc += Vector3.forward * (0f - narrowCrownHorizontalOffset);
-                                headoffset.offset = geneLoc;
-                                addon.offsets.east.headTypes = new List<AlienPartGenerator.HeadTypeOffsets>();
-                                addon.offsets.east.headTypes.Add(headoffset);                                
+                                headoffset.offset = new Vector2(geneLoc.x, geneLoc.z);
+                                addon.offsets.east.headTypes.Add(headoffset);
 
                                 Vector3 geneLoc2 = addon.offsets.west.offset;
                                 geneLoc2 += Vector3.right * narrowCrownHorizontalOffset;
                                 geneLoc2 += Vector3.forward * (0f - narrowCrownHorizontalOffset);
-                                headoffset.offset = geneLoc2;
-                                addon.offsets.west.headTypes = new List<AlienPartGenerator.HeadTypeOffsets>();
+                                headoffset.offset = new Vector2(geneLoc2.x, geneLoc2.z);
                                 addon.offsets.west.headTypes.Add(headoffset);
 
                             }
                         }
                     }
+        //            var modExtensionType = AccessTools.TypeByName("VanillaGenesExpanded.GeneExtension");
+        //            public bool useSkinColorForFur = false;
+        ////Keeps "fur" untinted
+        //public bool dontColourFur = false;
+        ////Switches "fur" shader to be CutoutComplex rather than skin shader.
+        //public bool useMaskForFur = false;
+        ////Fur hides the body graphic underneath completely
+        //public bool furHidesBody = false;
+        //var customField = AccessTools.Field(modExtensionType, "customfield");
+        //            if (gene.modExtensions != null)
+        //            {
+        //                foreach (var extension in gene.modExtensions)
+        //                {
+        //                    if (extension.GetType() == modExtensionType)
+        //                    {
+        //                        var data = (cast)customField.GetValue(extension);
+        //                    }
+        //                }
+        //            }
+
+
                 }
 
                 if (har == null)
                 {
+                    if(addon.path.NullOrEmpty() && addon.paths.NullOrEmpty() && addon.bodytypeGraphics.NullOrEmpty() && addon.genderGraphics.NullOrEmpty())
+                    {
+                        continue;
+                    }
                     //Log.Message(gene.defName+" addon built, need to init");
                     geneAddons.Add(addon);
                     continue;
@@ -297,6 +330,7 @@
                         har.addon.offsets.west.portraitHeadTypes = addon.offsets.west.portraitHeadTypes;
                     }
 
+                    har.addon.inFrontOfBody = true;
                     har.addon.layerInvert = addon.layerInvert;//always inverted due to offsets managing this
                     har.addon.drawnDesiccated = addon.drawnDesiccated;
                     har.addon.alignWithHead = addon.alignWithHead;
@@ -330,7 +364,7 @@
                     }
                     har.addon.drawWithoutPart = addon.drawWithoutPart;// part should link to head or torso if it is a gene, if override is wanted, disable autogene writing
                 }
-                Log.Message(gene.defName + "har addon built, need to init");
+                //Log.Message(gene.defName + "har addon built, need to init");
 
                 geneAddons.Add(har.addon);
 
@@ -346,7 +380,7 @@
                 }
             }
             new DefaultGraphicsLoader().LoadAllGraphics("universal genes", geneAddons.Cast<AlienPartGenerator.ExtendedGraphicTop>().ToArray());
-            universal.Concat(geneAddons);
+            universal.AddRange(geneAddons);
             return;
         }
 
