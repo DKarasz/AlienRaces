@@ -12,15 +12,15 @@
 
         static ScenPart_StartingHumanlikes()
         {
-            ScenPartDef scenPart = new()
+            ScenPartDef scenPart = new ScenPartDef
                                    {
-                                             defName         = "StartingHumanlikes",
-                                             label           = "Start with humanlikes",
-                                             scenPartClass   = typeof(ScenPart_StartingHumanlikes),
-                                             category        = ScenPartCategory.StartingImportant,
-                                             selectionWeight = 1.0f,
-                                             summaryPriority = 10
-                                         };
+                                       defName         = "StartingHumanlikes",
+                                       label           = "Start with humanlikes",
+                                       scenPartClass   = typeof(ScenPart_StartingHumanlikes),
+                                       category        = ScenPartCategory.StartingImportant,
+                                       selectionWeight = 1.0f,
+                                       summaryPriority = 10
+                                   };
             scenPart.ResolveReferences();
             scenPart.PostLoad();
             DefDatabase<ScenPartDef>.Add(scenPart);
@@ -32,7 +32,7 @@
 
         public PawnKindDef KindDef
         {
-            get => this.kindDef ??= PawnKindDefOf.Villager;
+            get => this.kindDef = this.kindDef ?? PawnKindDefOf.Villager;
             set => this.kindDef = value;
         }
 
@@ -64,13 +64,12 @@
 
         public override IEnumerable<string> GetSummaryListEntries(string tag)
         {
-            if (tag == "PlayerStartsWith") 
-                yield return this.KindDef.LabelCap + " x" + this.pawnCount;
+            if (tag == "PlayerStartsWith") yield return this.KindDef.LabelCap + " x" + this.pawnCount;
         }
 
         public override bool TryMerge(ScenPart other)
         {
-            if (other is not ScenPart_StartingHumanlikes others || others.KindDef != this.KindDef)
+            if (!(other is ScenPart_StartingHumanlikes others) || others.KindDef != this.KindDef)
             {
                 return false;
             }
@@ -81,9 +80,7 @@
 
         public IEnumerable<Pawn> GetPawns()
         {
-            List<WorkTypeDef> list = DefDatabase<WorkTypeDef>.AllDefsListForReading.Where(wtd => wtd.requireCapableColonist).ToList();
-
-            bool PawnCheck(Pawn p) => p != null && list.TrueForAll(match: w => !p.WorkTypeIsDisabled(w));
+            bool PawnCheck(Pawn p) => p != null && DefDatabase<WorkTypeDef>.AllDefsListForReading.Where(predicate: wtd => wtd.requireCapableColonist).ToList().TrueForAll(match: w => !p.WorkTypeIsDisabled(w));
 
 
             for (int i = 0; i < this.pawnCount; i++)
@@ -91,9 +88,11 @@
                 Pawn newPawn = null;
                 for (int x = 0; x < 200; x++)
                 {
-                    newPawn = PawnGenerator.GeneratePawn(new PawnGenerationRequest(this.KindDef, Faction.OfPlayer, PawnGenerationContext.PlayerStarter, tile: -1, forceGenerateNewPawn: true, allowDead: false, allowDowned: false, canGeneratePawnRelations: true, mustBeCapableOfViolence: false, colonistRelationChanceFactor: 26f, forceAddFreeWarmLayerIfNeeded: true));
+                    newPawn = PawnGenerator.GeneratePawn(new PawnGenerationRequest(this.KindDef, Faction.OfPlayer, PawnGenerationContext.PlayerStarter, tile: -1, forceGenerateNewPawn: true, newborn: false, allowDead: false, allowDowned: false, canGeneratePawnRelations: true, mustBeCapableOfViolence: false, colonistRelationChanceFactor: 26f, forceAddFreeWarmLayerIfNeeded: true));
                     if (PawnCheck(newPawn))
+                    {
                         x = 200;
+                    }
                 }
                 yield return newPawn;
             }

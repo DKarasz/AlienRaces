@@ -2,24 +2,20 @@
 {
     using System;
     using System.Collections.Generic;
-    using System.IO;
     using System.Linq;
-    using System.Xml;
-    using ApparelGraphics;
-    using ExtendedGraphics;
-    using JetBrains.Annotations;
+    using BodyAddonSupport;
     using RimWorld;
     using UnityEngine;
     using Verse;
-    using Gender = Verse.Gender;
 
     public partial class AlienPartGenerator
     {
-        public List<HeadTypeDef> headTypes;
-        public List<HeadTypeDef> HeadTypes => 
-            this.headTypes ?? CachedData.DefaultHeadTypeDefs;
+        public List<string> aliencrowntypes = new List<string> { "Average_Normal" };
 
-        public List<BodyTypeDef> bodyTypes = new List<BodyTypeDef>();
+        public List<BodyTypeDef> alienbodytypes = new List<BodyTypeDef>();
+
+        public bool useGenderedHeads = true;
+        public bool useGenderedBodies = false;
 
         public int getsGreyAt = 40;
 
@@ -45,40 +41,62 @@
 
         public BodyPartDef headBodyPartDef;
 
+        private static readonly Dictionary<Vector2, AlienGraphicMeshSet> meshPools = new Dictionary<Vector2, AlienGraphicMeshSet>();
+
         public List<BodyAddon> bodyAddons = new List<BodyAddon>();
 
         public ThingDef_AlienRace alienProps;
-        /*
-        public static string GetAlienHead(string userpath, Gender gender, HeadTypeDef headType)
-        {
-            string path         = userpath;
-            string headTypePath = Path.GetFileName(headType.graphicPath);
 
-            if (gender == Gender.None && headType.gender != Gender.None)
-                headTypePath = headTypePath.Substring(headTypePath.IndexOf('_')+1);
-            else
-                path = userpath + (userpath == GraphicPaths.VANILLA_HEAD_PATH ? gender + "/" : "");
+        public string RandomAlienHead(string userpath, Pawn pawn) => GetAlienHead(userpath, (this.useGenderedHeads ? pawn.gender.ToString() : ""), pawn.GetComp<AlienComp>().crownType = this.aliencrowntypes[Rand.Range(min: 0, this.aliencrowntypes.Count)]);
 
-            return userpath.NullOrEmpty() ? string.Empty : path + headTypePath;
-        }*/
-        /*
+        public static string GetAlienHead(string userpath, string gender, string crowntype) => userpath.NullOrEmpty() ? "" : userpath + (userpath == GraphicPaths.VANILLA_HEAD_PATH ? gender + "/" : "") + (!gender.NullOrEmpty() ? gender + "_" : "") + crowntype;
+
         public Graphic GetNakedGraphic(BodyTypeDef bodyType, Shader shader, Color skinColor, Color skinColorSecond, string userpath, string gender, string maskPath) =>
-            GraphicDatabase.Get(typeof(Graphic_Multi), GetNakedPath(bodyType, userpath, this.useGenderedBodies ? gender : ""), shader, Vector2.one, skinColor, skinColorSecond, data: null, shaderParameters: null, maskPath: maskPath);
+            GraphicDatabase.Get(typeof(Graphic_Multi), GetNakedPath(bodyType, userpath, this.useGenderedBodies ? gender : ""), shader, Vector2.one, 
+                                skinColor, skinColorSecond, data: null, shaderParameters: null, maskPath: maskPath);
 
-        public static string GetNakedPath(BodyTypeDef bodyType, string userpath, string gender) => userpath + (!gender.NullOrEmpty() ? gender + "_" : "") + "Naked_" + (bodyType == BodyTypeDefOf.Baby ? BodyTypeDefOf.Child : bodyType);
-        */
+        public static string GetNakedPath(BodyTypeDef bodyType, string userpath, string gender) => userpath + (!gender.NullOrEmpty() ? gender + "_" : "") + "Naked_" + bodyType;
+
         public Color SkinColor(Pawn alien, bool first = true)
         {
             AlienComp alienComp = alien.TryGetComp<AlienComp>();
 
-            if (alien.story.SkinColorOverriden)
-                return alien.story.skinColorOverride!.Value;
-
             if (alienComp == null) 
-                return CachedData.skinColorBase(alien.story) ?? Color.clear;
+                return PawnSkinColors.GetSkinColor(alien.story.melanin);
 
             ExposableValueTuple<Color, Color> skinColors = alienComp.GetChannel(channel: "skin");
             return first ? skinColors.first : skinColors.second;
+        }
+
+        private void GenerateMeshSets()
+        {
+            void AddMeshSet(Vector2 drawSize, Vector2 headDrawSize)
+            {
+                if (!meshPools.Keys.Any(predicate: v => v.Equals(drawSize)))
+                {
+                    meshPools.Add(drawSize, new AlienGraphicMeshSet
+                                            {
+                                                bodySet        = new GraphicMeshSet(1.5f * drawSize.x,     1.5f * drawSize.y),     // bodySet
+                                                headSet        = new GraphicMeshSet(1.5f * headDrawSize.x, 1.5f * headDrawSize.y), // headSet
+                                                hairSetAverage = new GraphicMeshSet(1.5f * headDrawSize.x, 1.5f * headDrawSize.y), // hairSetAverage
+                                            });
+                }
+            }
+
+            foreach (GraphicPaths graphicsPath in this.alienProps.alienRace.graphicPaths.Concat(
+                                                                                                new GraphicPaths
+                                                                                                {
+                                                                                                    customDrawSize             = this.customDrawSize,
+                                                                                                    customHeadDrawSize         = this.customHeadDrawSize,
+                                                                                                    customPortraitDrawSize     = this.customPortraitDrawSize,
+                                                                                                    customPortraitHeadDrawSize = this.customPortraitHeadDrawSize
+                                                                                                }))
+            {
+                AddMeshSet(graphicsPath.customDrawSize,             graphicsPath.customDrawSize);
+                AddMeshSet(graphicsPath.customHeadDrawSize,         graphicsPath.customHeadDrawSize);
+                AddMeshSet(graphicsPath.customPortraitDrawSize,     graphicsPath.customPortraitDrawSize);
+                AddMeshSet(graphicsPath.customPortraitHeadDrawSize, graphicsPath.customPortraitHeadDrawSize);
+            }
         }
 
         private void GenerateOffsetDefaults()
@@ -141,201 +159,12 @@
         {
             this.GenerateMeshsAndMeshPools(new DefaultGraphicsLoader());
         }
-
+        
         public void GenerateMeshsAndMeshPools(IGraphicsLoader graphicsLoader)
         {
+            this.GenerateMeshSets();
             this.GenerateOffsetDefaults();
-
-            {
-                if (!this.alienProps.alienRace.graphicPaths.head.GetSubGraphics().MoveNext())
-                {
-
-                    ExtendedGraphicTop headGraphic = this.alienProps.alienRace.graphicPaths.head;
-                    string             headPath    = headGraphic.path;
-
-                    this.alienProps.alienRace.graphicPaths.head.headtypeGraphics = new List<ExtendedHeadtypeGraphic>();
-
-                    foreach (HeadTypeDef headType in this.HeadTypes.Concat(DefDatabase<HeadTypeDef>.AllDefs.Where(htd => !htd.requiredGenes.NullOrEmpty())))
-                    {
-                        string headTypePath = Path.GetFileName(headType.graphicPath);
-
-                        int  ind            = headTypePath.IndexOf('_');
-                        bool genderIncluded = headType.gender != Gender.None && ind >= 0 && Enum.TryParse(headTypePath.Substring(0, ind), out Gender _);
-                        headTypePath = genderIncluded ? headTypePath.Substring(ind + 1) : headTypePath;
-
-                        ExtendedHeadtypeGraphic headtypeGraphic = new()
-                                                                  {
-                                                                      headType = headType,
-                                                                      paths = new List<string>
-                                                                              {
-                                                                                  headPath.NullOrEmpty() ? string.Empty : headPath + headTypePath
-                                                                              },
-                                                                      genderGraphics = new List<ExtendedGenderGraphic>()
-                                                                  };
-
-                        if (!headType.requiredGenes.NullOrEmpty())
-                            headtypeGraphic.pathsFallback.Add(headType.graphicPath);
-
-                        Gender firstGender = genderIncluded ? headType.gender : Gender.Male;
-
-                        headtypeGraphic.genderGraphics.Add(new ExtendedGenderGraphic
-                                                           {
-                                                               gender = firstGender,
-                                                               path   = headPath + firstGender + "_" + headTypePath
-                                                           });
-                        if (!genderIncluded)
-                            headtypeGraphic.genderGraphics.Add(new ExtendedGenderGraphic
-                                                               {
-                                                                   gender = Gender.Female,
-                                                                   path   = headPath + Gender.Female + headTypePath
-                                                               });
-
-                        headGraphic.headtypeGraphics.Add(headtypeGraphic);
-                    }
-                }
-
-                //Log.Message(string.Join("\n", this.alienProps.alienRace.graphicPaths.head.headtypeGraphics.Select(ehg => $"{ehg.headType.defName}: {ehg.path} | {string.Join("|", ehg.genderGraphics?.Select(egg => $"{egg.gender}: {egg.path}") ?? new []{string.Empty})}")));
-
-                if (!this.alienProps.alienRace.graphicPaths.body.GetSubGraphics().MoveNext())
-                {
-                    ExtendedGraphicTop bodyGraphic = this.alienProps.alienRace.graphicPaths.body;
-                    string             bodyPath    = bodyGraphic.path;
-
-                    bodyGraphic.bodytypeGraphics = new List<ExtendedBodytypeGraphic>();
-
-                    foreach (BodyTypeDef bodyTypeRaw in this.bodyTypes)
-                    {
-                        BodyTypeDef bodyType = bodyTypeRaw == BodyTypeDefOf.Baby ? BodyTypeDefOf.Child : bodyTypeRaw;
-
-                        bodyGraphic.bodytypeGraphics.Add(new ExtendedBodytypeGraphic
-                                                         {
-                                                             bodytype = bodyTypeRaw,
-                                                             path     = $"{bodyPath}Naked_{bodyType.defName}",
-                                                             genderGraphics = new List<ExtendedGenderGraphic>()
-                                                                              {
-                                                                                  new()
-                                                                                  {
-                                                                                      gender = Gender.Male,
-                                                                                      path   = $"{bodyPath}{Gender.Male}_Naked_{bodyType.defName}"
-                                                                                  },
-                                                                                  new()
-                                                                                  {
-                                                                                      gender = Gender.Female,
-                                                                                      path   = $"{bodyPath}{Gender.Female}_Naked_{bodyType.defName}"
-                                                                                  }
-                                                                              }
-                                                         });
-                    }
-                }
-            }
-
-            {
-                
-                foreach (ExtendedGraphicTop graphicTop in this.alienProps.alienRace.graphicPaths.apparel.individualPaths.Values)
-                {
-                    if (!graphicTop.GetSubGraphics().MoveNext())
-                    {
-                        string path = graphicTop.path;
-
-                        graphicTop.bodytypeGraphics = new List<ExtendedBodytypeGraphic>();
-                        foreach (BodyTypeDef bodyType in this.bodyTypes)
-                            graphicTop.bodytypeGraphics.Add(new ExtendedBodytypeGraphic
-                                                            {
-                                                                bodytype = bodyType,
-                                                                path     = $"{path}_{bodyType.defName}",
-                                                                genderGraphics = new List<ExtendedGenderGraphic>
-                                                                                 {
-                                                                                     new()
-                                                                                     {
-                                                                                         gender = Gender.Male,
-                                                                                         path   = $"{path}_{Gender.Male}_{bodyType.defName}"
-                                                                                     },
-                                                                                     new()
-                                                                                     {
-                                                                                         gender = Gender.Female,
-                                                                                         path   = $"{path}_{Gender.Female}_{bodyType.defName}"
-                                                                                     }
-                                                                                 }
-                                                            });
-                    }
-                }
-
-                foreach (ApparelFallbackOption fallback in this.alienProps.alienRace.graphicPaths.apparel.fallbacks)
-                {
-                    foreach (ExtendedGraphicTop graphicTop in fallback.wornGraphicPaths.Concat(fallback.wornGraphicPath))
-                    {
-
-                        if (!graphicTop.GetSubGraphics().MoveNext())
-                        {
-                            string path = graphicTop.path;
-                            graphicTop.bodytypeGraphics = new List<ExtendedBodytypeGraphic>();
-                            foreach (BodyTypeDef bodyType in this.bodyTypes)
-                                graphicTop.bodytypeGraphics.Add(new ExtendedBodytypeGraphic
-                                                                {
-                                                                    bodytype = bodyType,
-                                                                    path     = $"{path}_{bodyType.defName}",
-                                                                    genderGraphics = new List<ExtendedGenderGraphic>()
-                                                                                     {
-                                                                                         new()
-                                                                                         {
-                                                                                             gender = Gender.Male,
-                                                                                             path   = $"{path}_{Gender.Male}_{bodyType.defName}"
-                                                                                         },
-                                                                                         new()
-                                                                                         {
-                                                                                             gender = Gender.Female,
-                                                                                             path   = $"{path}_{Gender.Female}_{bodyType.defName}"
-                                                                                         }
-                                                                                     }
-                                                                });
-                        }
-                    }
-                }
-            }
-
-            this.alienProps.alienRace.graphicPaths.apparel.pathPrefix.Init();
-            if (!this.alienProps.alienRace.graphicPaths.apparel.pathPrefix.GetPath().NullOrEmpty())
-                this.alienProps.alienRace.graphicPaths.apparel.pathPrefix.IncrementVariantCount();
-            Stack<IEnumerator<IExtendedGraphic>> stack = new();
-            
-            stack.Push(this.alienProps.alienRace.graphicPaths.apparel.pathPrefix.GetSubGraphics());
-            while (stack.Count > 0)
-            {
-                IEnumerator<IExtendedGraphic> currentGraphicSet = stack.Pop();
-
-                while (currentGraphicSet.MoveNext())
-                {
-                    IExtendedGraphic current = currentGraphicSet.Current;
-                    if (current != null)
-                    {
-                        current.Init();
-                        if(!current.GetPath().NullOrEmpty())
-                            current.IncrementVariantCount();
-                        
-                        stack.Push(current.GetSubGraphics());
-                    }
-                }
-            }
-
-            graphicsLoader.LoadAllGraphics(this.alienProps.defName, 
-                                           this.alienProps.alienRace.graphicPaths.head,
-                                           this.alienProps.alienRace.graphicPaths.body,
-                                           this.alienProps.alienRace.graphicPaths.skeleton,
-                                           this.alienProps.alienRace.graphicPaths.skull,
-                                           this.alienProps.alienRace.graphicPaths.stump,
-                                           this.alienProps.alienRace.graphicPaths.bodyMasks,
-                                           this.alienProps.alienRace.graphicPaths.headMasks);
-            
-            graphicsLoader.LoadAllGraphics(this.alienProps.defName, 
-                                           this.alienProps.alienRace.graphicPaths.apparel.individualPaths.Values.Concat(
-                                                                                                                                this.alienProps.alienRace.graphicPaths.apparel.fallbacks.SelectMany(afo => 
-                                                                                                                                    afo.wornGraphicPaths.Concat(afo.wornGraphicPath)) ).ToArray());
-            
-            graphicsLoader.LoadAllGraphics(this.alienProps.defName + " Addons", this.bodyAddons.Cast<ExtendedGraphicTop>().ToArray());
-
-            foreach (BodyAddon bodyAddon in this.bodyAddons)
-                // Initialise the offsets of each addon with the generic default offsets
-                bodyAddon.defaultOffsets = this.offsetDefaults.Find(on => on.name == bodyAddon.defaultOffset).offsets;
+            graphicsLoader.LoadAllGraphics(this.alienProps.defName, this.offsetDefaults, this.bodyAddons);
         }
 
         public class WoundAnchorReplacement
@@ -367,39 +196,7 @@
 
         public class ColorChannelGenerator
         {
-            public string                              name = "";
-            public List<ColorChannelGeneratorCategory> entries = new List<ColorChannelGeneratorCategory>();
-
-
-            [UsedImplicitly]
-            public void LoadDataFromXmlCustom(XmlNode xmlRoot)
-            {
-                foreach (XmlNode xmlNode in xmlRoot.ChildNodes)
-                    switch (xmlNode.Name)
-                    {
-                        case "name":
-                            this.name = xmlNode.InnerText.Trim();
-                            break;
-                        case "first":
-                            if (this.entries.NullOrEmpty())
-                                this.entries.Add(new ColorChannelGeneratorCategory() { weight = 100f });
-                            this.entries[0].first = DirectXmlToObject.ObjectFromXml<ColorGenerator>(xmlNode, false);
-                            break;
-                        case "second":
-                            if (this.entries.NullOrEmpty())
-                                this.entries.Add(new ColorChannelGeneratorCategory() { weight = 100f });
-                            this.entries[0].second = DirectXmlToObject.ObjectFromXml<ColorGenerator>(xmlNode, false);
-                            break;
-                        case "entries":
-                            this.entries = DirectXmlToObject.ObjectFromXml<List<ColorChannelGeneratorCategory>>(xmlNode, false);
-                            break;
-                    }
-            }
-        }
-
-        public class ColorChannelGeneratorCategory
-        {
-            public float          weight = float.Epsilon;
+            public string         name = "";
             public ColorGenerator first;
             public ColorGenerator second;
         }
@@ -407,25 +204,25 @@
 
         public class AlienComp : ThingComp
         {
-            public  bool          fixGenderPostSpawn;
-            public  Vector2       customDrawSize             = Vector2.one;
-            public  Vector2       customHeadDrawSize         = Vector2.one;
-            public  Vector2       customPortraitDrawSize     = Vector2.one;
-            public  Vector2       customPortraitHeadDrawSize = Vector2.one;
-
-            public  int           bodyVariant                = -1;
-            public  int           headVariant                = -1;
-            public  int           headMaskVariant            = -1;
-            public  int           bodyMaskVariant            = -1;
-
-            public  List<Graphic> addonGraphics;
-            public  List<int>     addonVariants;
-        
+            public bool                fixGenderPostSpawn;
+            public string              crownType;
+            public Vector2             customDrawSize             = Vector2.one;
+            public Vector2             customHeadDrawSize         = Vector2.one;
+            public Vector2             customPortraitDrawSize     = Vector2.one;
+            public Vector2             customPortraitHeadDrawSize = Vector2.one;
+            public AlienGraphicMeshSet alienGraphics;
+            public AlienGraphicMeshSet alienHeadGraphics;
+            public AlienGraphicMeshSet alienPortraitGraphics;
+            public AlienGraphicMeshSet alienPortraitHeadGraphics;
+            public int                 headMaskVariant = -1;
+            public int                 bodyMaskVariant = -1;
+            public List<Graphic>       addonGraphics;
+            public List<int>           addonVariants;
 
             public int lastAlienMeatIngestedTick = 0;
 
             private Dictionary<string, ExposableValueTuple<Color, Color>> colorChannels;
-            private Dictionary<string, HashSet<ExposableValueTuple<ExposableValueTuple<string, int>, bool>>>   colorChannelLinks = new Dictionary<string, HashSet<ExposableValueTuple<ExposableValueTuple<string, int>, bool>>>();
+            private Dictionary<string, HashSet<ExposableValueTuple<string, bool>>>   colorChannelLinks = new Dictionary<string, HashSet<ExposableValueTuple<string, bool>>>();
 
             public Dictionary<string, ExposableValueTuple<Color, Color>> ColorChannels
             {
@@ -433,68 +230,49 @@
                 {
                     if (this.colorChannels == null || !this.colorChannels.Any())
                     {
-                        Pawn               pawn       = (Pawn)this.parent;
-                        ThingDef_AlienRace alienProps = ((ThingDef_AlienRace)this.parent.def);
-                        AlienPartGenerator apg        = alienProps.alienRace.generalSettings.alienPartGenerator;
-
                         this.colorChannels     = new Dictionary<string, ExposableValueTuple<Color, Color>>();
-                        this.colorChannelLinks = new Dictionary<string, HashSet<ExposableValueTuple<ExposableValueTuple<string, int>, bool>>>();
+                        this.colorChannelLinks = new Dictionary<string, HashSet<ExposableValueTuple<string, bool>>>();
+                        Pawn               pawn       = (Pawn) this.parent;
+                        ThingDef_AlienRace alienProps = ((ThingDef_AlienRace) this.parent.def);
+                        AlienPartGenerator apg        = alienProps.alienRace.generalSettings.alienPartGenerator;
 
                         this.colorChannels.Add(key: "base", new ExposableValueTuple<Color, Color>(Color.white, Color.white));
                         this.colorChannels.Add(key: "hair", new ExposableValueTuple<Color, Color>(Color.clear, Color.clear));
-                        
-                        Color skinColor;
-                        try
-                        {
-                            skinColor = alienProps.alienRace.raceRestriction.blackEndoCategories.Contains(EndogeneCategory.Melanin) ?
-                                            PawnSkinColors.RandomSkinColorGene(pawn).skinColorBase!.Value :
-                                            pawn.story.SkinColorBase;
-                        }
-                        catch (InvalidOperationException)
-                        {
-                            skinColor = PawnSkinColors.RandomSkinColorGene(pawn).skinColorBase!.Value;
-                        }
+                        Color skinColor = PawnSkinColors.GetSkinColor(pawn.story.melanin);
 
                         this.colorChannels.Add(key: "skin", new ExposableValueTuple<Color, Color>(skinColor, skinColor));
 
-                        this.colorChannels.Add(key: "tattoo", new ExposableValueTuple<Color, Color>(Color.clear, Color.clear));
-                        
+                        Color tattooColor = skinColor;
+                        tattooColor.a *= 0.8f;
+                        this.colorChannels.Add(key: "tattoo", new ExposableValueTuple<Color, Color>(tattooColor, tattooColor));
+
                         foreach (ColorChannelGenerator channel in apg.colorChannels)
                         {
                             if (!this.colorChannels.ContainsKey(channel.name))
                                 this.colorChannels.Add(channel.name, new ExposableValueTuple<Color, Color>(Color.white, Color.white));
-                            this.colorChannels[channel.name] = this.GenerateChannel(channel, this.colorChannels[channel.name]);
+                            ExposableValueTuple<Color, Color> colors = this.colorChannels[channel.name];
+                            if (channel.first != null)
+                                colors.first = this.GenerateColor(channel, true);
+                            if (channel.second != null)
+                                colors.second = this.GenerateColor(channel, false);
                         }
-
-                        pawn.story.SkinColorBase = this.colorChannels["skin"].first;
 
                         ExposableValueTuple<Color, Color> hairColors = this.colorChannels[key: "hair"];
 
                         if (hairColors.first == Color.clear)
                         {
-                            Color color = PawnHairColors.RandomHairColor(pawn, pawn.story.SkinColor, pawn.ageTracker.AgeBiologicalYears);
+                            Color color = PawnHairColors.RandomHairColor(pawn.story.SkinColor, pawn.ageTracker.AgeBiologicalYears);
                             hairColors.first  = color;
                             hairColors.second = color;
                         }
 
-                        ExposableValueTuple<Color, Color> tattooColors = this.colorChannels[key: "tattoo"];
-
-                        if (tattooColors.first == Color.clear)
-                        {
-                            Color tattooColor = skinColor;
-                            tattooColor.a *= 0.8f;
-
-                            tattooColors.first = tattooColors.second = tattooColor;
-                        }
-
-
                         if (pawn.Corpse?.GetRotStage() == RotStage.Rotting)
                             this.colorChannels["skin"].first = PawnGraphicSet.RottingColorDefault;
-                        pawn.story.HairColor = hairColors.first;
+                        pawn.story.hairColor = hairColors.first;
 
                         this.RegenerateColorChannelLink("skin");
-
-
+                        
+                        
                         if (alienProps.alienRace.generalSettings.alienPartGenerator.getsGreyAt <= pawn.ageTracker.AgeBiologicalYears)
                         {
                             if (Rand.Value < GenMath.SmootherStep(alienProps.alienRace.generalSettings.alienPartGenerator.getsGreyAt,
@@ -504,8 +282,8 @@
                                                                   pawn.ageTracker.AgeBiologicalYears))
                             {
                                 float grey = Rand.Range(min: 0.65f, max: 0.85f);
-                                hairColors.first                 = new Color(grey, grey, grey);
-                                pawn.story.HairColor = hairColors.first;
+                                pawn.story.hairColor = new Color(grey, grey, grey);
+                                hairColors.first     = pawn.story.hairColor;
                             }
                         }
                     }
@@ -514,37 +292,22 @@
                 }
             }
 
-
-            public ExposableValueTuple<Color, Color> GenerateChannel(ColorChannelGenerator channel, ExposableValueTuple<Color, Color> colors = null)
+            public Color GenerateColor(ColorChannelGenerator channel, bool first)
             {
-                colors ??= new ExposableValueTuple<Color, Color>();
-
-                ColorChannelGeneratorCategory categoryEntry = channel.entries.RandomElementByWeight(ccgc => ccgc.weight);
-
-                if (categoryEntry.first != null)
-                    colors.first = this.GenerateColor(channel, categoryEntry, true);
-                if (categoryEntry.second != null)
-                    colors.second = this.GenerateColor(channel, categoryEntry, false);
-
-                return colors;
-            }
-
-            public Color GenerateColor(ColorChannelGenerator channel, ColorChannelGeneratorCategory category, bool first)
-            {
-                ColorGenerator gen = first ? category.first : category.second;
+                ColorGenerator gen = first ? channel.first : channel.second;
 
                 switch (gen)
                 {
                     case ColorGenerator_CustomAlienChannel ac:
                         string[] split = ac.colorChannel.Split('_');
                         if (!this.colorChannelLinks.ContainsKey(split[0]))
-                            this.colorChannelLinks.Add(split[0], new HashSet<ExposableValueTuple<ExposableValueTuple<string, int>, bool >>());
-                        if (this.colorChannelLinks[split[0]].All(evt => evt.first.first != channel.name))
-                            this.colorChannelLinks[split[0]].Add(new ExposableValueTuple<ExposableValueTuple<string, int>, bool>(new ExposableValueTuple<string, int>(channel.name, channel.entries.IndexOf(category)), first));
+                            this.colorChannelLinks.Add(split[0], new HashSet<ExposableValueTuple<string, bool>>());
+
+                        this.colorChannelLinks[split[0]].Add(new ExposableValueTuple<string, bool>(channel.name, first));
                         return split[1] == "1" ? this.ColorChannels[split[0]].first : this.ColorChannels[split[0]].second;
                     case ColorGenerator_SkinColorMelanin cm:
                         return cm.naturalMelanin ? 
-                                   ((Pawn) this.parent).story.SkinColorBase : 
+                                   PawnSkinColors.GetSkinColor(((Pawn) this.parent).story.melanin) : 
                                    gen.NewRandomizedColor();
                     default:
                         return gen.NewRandomizedColor();
@@ -565,24 +328,16 @@
             {
                 base.PostExposeData();
                 Scribe_Values.Look(ref this.fixGenderPostSpawn, label: "fixAlienGenderPostSpawn");
+                Scribe_Values.Look(ref this.crownType,          label: "crownType");
                 Scribe_Collections.Look(ref this.addonVariants, label: "addonVariants");
                 Scribe_Collections.Look(ref this.colorChannels, label: "colorChannels");
-                Scribe_NestedCollections.Look(ref this.colorChannelLinks, label: "colorChannelLinks", LookMode.Undefined, LookMode.Deep);
-
-                Scribe_Values.Look(ref this.headVariant, nameof(this.headVariant), -1);
-                Scribe_Values.Look(ref this.bodyVariant, nameof(this.bodyVariant), -1);
+                Scribe_NestedCollections.Look(ref this.colorChannelLinks, label: "colorChannelLinks", LookMode.Undefined, LookMode.Undefined);
                 Scribe_Values.Look(ref this.headMaskVariant, nameof(this.headMaskVariant), -1);
                 Scribe_Values.Look(ref this.bodyMaskVariant, nameof(this.bodyMaskVariant), -1);
 
-                Pawn   pawn          = (Pawn)this.parent;
-                if (Scribe.mode is LoadSaveMode.ResolvingCrossRefs or LoadSaveMode.Saving)
-                {
-                    Color? skinColorBase = CachedData.skinColorBase(pawn.story);
-                    Scribe_Values.Look(ref skinColorBase, nameof(skinColorBase));
-                    pawn.story.SkinColorBase = skinColorBase ?? this.GetChannel("skin").first;
-                }
-
-                this.colorChannelLinks ??= new Dictionary<string, HashSet<ExposableValueTuple<ExposableValueTuple<string, int>, bool>>>();
+                if (this.colorChannelLinks == null)
+                    this.colorChannelLinks = new Dictionary<string, HashSet<ExposableValueTuple<string, bool>>>();
+                    
             }
 
             public ExposableValueTuple<Color, Color> GetChannel(string channel)
@@ -596,7 +351,11 @@
                 foreach (ColorChannelGenerator apgChannel in apg.colorChannels)
                     if (apgChannel.name == channel)
                     {
-                        this.ColorChannels.Add(channel, this.GenerateChannel(apgChannel));
+                        this.ColorChannels.Add(channel, new ExposableValueTuple<Color, Color>());
+                        if (apgChannel.first != null)
+                            this.ColorChannels[channel].first = this.GenerateColor(apgChannel, true);
+                        if (apgChannel.second != null)
+                            this.ColorChannels[channel].second = this.GenerateColor(apgChannel, false);
 
                         return this.ColorChannels[channel];
                     }
@@ -604,9 +363,17 @@
                 return new ExposableValueTuple<Color, Color>(Color.white, Color.white);
             }
 
+            internal void AssignProperMeshs()
+            {
+                this.alienGraphics             = meshPools[this.customDrawSize];
+                this.alienHeadGraphics         = meshPools[this.customHeadDrawSize];
+                this.alienPortraitGraphics     = meshPools[this.customPortraitDrawSize];
+                this.alienPortraitHeadGraphics = meshPools[this.customPortraitHeadDrawSize];
+            }
+
             public void RegenerateColorChannelLinks()
             {
-                foreach (KeyValuePair<string, HashSet<ExposableValueTuple<ExposableValueTuple<string, int>, bool>>> kvp in this.colorChannelLinks) 
+                foreach (KeyValuePair<string, HashSet<ExposableValueTuple<string, bool>>> kvp in this.colorChannelLinks) 
                     this.RegenerateColorChannelLink(kvp.Key);
             }
 
@@ -616,16 +383,17 @@
                 AlienPartGenerator apg        = alienProps.alienRace.generalSettings.alienPartGenerator;
 
                 if (this.colorChannelLinks.ContainsKey(channel))
-                    foreach (ExposableValueTuple<ExposableValueTuple<string, int>, bool> link in this.colorChannelLinks[channel])
+                    foreach (ExposableValueTuple<string, bool> link in this.colorChannelLinks[channel])
                     {
                         foreach (ColorChannelGenerator apgChannel in apg.colorChannels)
                         {
-                            if (apgChannel.name == link.first.first)
+                            if (apgChannel.name == link.first)
                             {
                                 if (link.second)
-                                    this.ColorChannels[link.first.first].first = this.GenerateColor(apgChannel, apgChannel.entries[link.first.second], true);
+                                    this.ColorChannels[link.first].first = this.GenerateColor(apgChannel, true);
                                 else
-                                    this.ColorChannels[link.first.first].second = this.GenerateColor(apgChannel, apgChannel.entries[link.first.second], false);
+                                    this.ColorChannels[link.first].second = this.GenerateColor(apgChannel, false);
+                                
                             }
                         }
                     }
@@ -643,7 +411,6 @@
             }
 
             [DebugAction(category: "AlienRace", name: "Regenerate all colorchannels", allowedGameStates = AllowedGameStates.PlayingOnMap)]
-            // ReSharper disable once UnusedMember.Local
             private static void RegenerateColorchannels()
             {
                 foreach (Pawn pawn in Find.CurrentMap.mapPawns.AllPawns)
@@ -653,44 +420,40 @@
                         comp.colorChannels = null;
                 }
             }
-
-            [DebugAction("AlienRace", name: "Reresolve graphics", actionType = DebugActionType.ToolMapForPawns)]
-            // ReSharper disable once UnusedMember.Local
-            private static void ReresolveGraphic(Pawn p)
-            {
-                p.Drawer?.renderer?.graphics?.SetAllGraphicsDirty();
-            }
         }
 
-        public class ExposableValueTuple<TK, TV> : IExposable, IEquatable<ExposableValueTuple<TK,TV>>
+        public class ExposableValueTuple<K, V> : IExposable, IEquatable<ExposableValueTuple<K,V>>
         {
-            public TK first;
-            public TV second;
+            public K first;
+            public V second;
 
             public ExposableValueTuple()
             {
             }
 
-            public ExposableValueTuple(TK first, TV second)
+            public ExposableValueTuple(K first, V second)
             {
                 this.first = first;
                 this.second = second;
             }
 
-            public bool Equals(ExposableValueTuple<TK, TV> other) => 
+            public bool Equals(ExposableValueTuple<K, V> other) => 
                 other != null && this.first.Equals(other.first) && this.second.Equals(other.second);
 
-            // ReSharper disable twice NonReadonlyMemberInGetHashCode
             public override int GetHashCode() => this.first.GetHashCode() + this.second.GetHashCode();
 
             public void ExposeData()
             {
-                if(typeof(TK).GetInterface(nameof(IExposable)) != null)
-                    Scribe_Deep.Look(ref this.first, label: nameof(this.first));
-                else
-                    Scribe_Values.Look(ref this.first, label: "first");
+                Scribe_Values.Look(ref this.first, label: "first");
                 Scribe_Values.Look(ref this.second, label: "second");
             }
+        }
+
+        public class AlienGraphicMeshSet
+        {
+            public GraphicMeshSet bodySet;
+            public GraphicMeshSet headSet;
+            public GraphicMeshSet hairSetAverage;
         }
     }
 }
